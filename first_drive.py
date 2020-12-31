@@ -4,79 +4,69 @@ from evdev import InputDevice, categorize, ecodes
 import gpiozero
 import numpy as np
 
-controller = InputDevice('/dev/input/event0')
+from controller import map_controller
 
-buttons = {
-    307: 'x',
-    308: 'y',
-    305: 'b',
-    304: 'a',
-    310: 'lb',
-    311: 'rb',
-    315: 'menu',
-    158: 'screen'
-    }
 
-joysticks = {
-    0: 'lj-x',
-    1: 'lj-y',
-    2: 'rj-x',
-    5: 'rj-y',
-    9: 'rt',
-    10: 'lt'
-    }
+class Rover:
+    def __init__(self):
+        self.controller = InputDevice('/dev/input/event0')
 
-front_left = gpiozero.Motor(7,8)
-front_right = gpiozero.Motor(9,10)
+        # Map the controller buttons
+        self.buttons, self.jsticks = map_controller()
 
-def check_for_stop(btn=315):
-    if btn in controller.active_keys():
-        return True
+        # Define motors
+        self.front_left = gpiozero.Motor(7, 8)
+        self.front_right = gpiozero.Motor(9, 10)
+        self.back_left = gpiozero.Motor(17, 18)  # Placeholder
+        self.back_right = gpiozero.Motor(19, 20)  # Placeholder
 
-def check_for_drive():
-    # Get commands
-    y_pos = controller.absinfo(1)
-    x_pos = controller.absinfo(0)
+    def check_for_stop(self, btn=315):
+        if btn in self.controller.active_keys():
+            return True
 
-    # Convert to speeds
-    front_to_back = float(np.interp(y_pos.value / 1000, [0, 65], [1, -1]))
-    side_to_side = float(np.interp(x_pos.value / 1000, [0, 65], [1, -1]))
+    def check_for_drive(self):
+        # Get commands
+        y_pos = self.controller.absinfo(1)
+        x_pos = self.controller.absinfo(0)
 
-    if side_to_side > 0:  # Commanding left
-        right = front_to_back
-        left = front_to_back *  np.interp(side_to_side, [0, 1], [1, -1])
-    else:  # Commanding right
-        right = front_to_back * np.interp(abs(side_to_side), [0, 1], [1, -1])
-        left = front_to_back
+        # Convert to speeds
+        front_to_back = float(np.interp(y_pos.value / 1000, [0, 65], [1, -1]))
+        side_to_side = float(np.interp(x_pos.value / 1000, [0, 65], [1, -1]))
 
-    return right, left
+        if side_to_side > 0:  # Commanding left
+            right = front_to_back
+            left = front_to_back * np.interp(side_to_side, [0, 1], [1, -1])
+        else:  # Commanding right
+            right = front_to_back * np.interp(abs(side_to_side), [0, 1], [1, -1])
+            left = front_to_back
 
-def command_drive(right, left):
+        return right, left
 
-    if right >= 0:
-        front_right.forward(right)
-    else:
-        front_right.backward(-right)
+    def command_drive(self, right, left):
 
-    if left >= 0:
-        front_left.forward(left)
-    else:
-        front_left.backward(-left)
+        if right >= 0:
+            self.front_right.forward(right)
+        else:
+            self.front_right.backward(-right)
 
-def run_loop():
-    while(True):
-        # Check for stop
-        if check_for_stop():
-            break
+        if left >= 0:
+            self.front_left.forward(left)
+        else:
+            self.front_left.backward(-left)
 
-        # Check for drive
-        fwd, lft = check_for_drive()
+    def run_loop(self):
+        while not self.check_for_stop():
 
-        # Command robot
-        command_drive(fwd, lft)
+            # Check for drive
+            fwd, lft = self.check_for_drive()
 
-        # Wait for next loop
-        time.sleep(0.5)
+            # Command robot
+            self.command_drive(fwd, lft)
+
+            # Wait for next loop
+            time.sleep(0.5)
+
 
 if __name__ == '__main__':
-    run_loop()
+    rover = Rover()
+    rover.run_loop()
